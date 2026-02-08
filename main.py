@@ -1,101 +1,66 @@
-import numpy as np
-import nltk
-from nltk.tokenize import sent_tokenize, word_tokenize
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-from numpy.linalg import svd
+import json
+import random
+from Summarizer import textrank_summary_bg, lsa_summary_bg
+from TextPreprocessing import clean_sentence
+from pathlib import Path
 
-# Make sure NLTK data is available
-nltk.download("punkt", quiet=True)
-nltk.download("punkt_tab", quiet=True)
+def load_jsonl(path):
+    items = []
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                items.append(json.loads(line))
+    return items
 
-
-# ---------------------------------------------------------
-# TEXT RANK IMPLEMENTATION
-# ---------------------------------------------------------
-def textrank_summary(text, n_sentences=3):
-    sentences = sent_tokenize(text)
-
-    # TF-IDF vectors for sentences
-    vectorizer = TfidfVectorizer(stop_words="english")
-    tfidf = vectorizer.fit_transform(sentences)
-
-    # Similarity matrix
-    sim_matrix = cosine_similarity(tfidf)
-
-    # PageRank parameters
-    n = len(sentences)
-    scores = np.ones(n) / n
-    damping = 0.85
-
-    # Power iteration
-    for _ in range(50):
-        new_scores = (1 - damping) + damping * sim_matrix.dot(scores)
-        if np.allclose(new_scores, scores):
-            break
-        scores = new_scores
-
-    # Pick top sentences
-    top_idx = np.argsort(scores)[-n_sentences:]
-    top_idx = sorted(top_idx)
-
-    return " ".join(sentences[i] for i in top_idx)
+def pick_article(items, title_contains=None):
+    if title_contains:
+        filtered = [it for it in items if title_contains.lower() in it["title"].lower()]
+        return random.choice(filtered) if filtered else None
+    return random.choice(items)
 
 
-# ---------------------------------------------------------
-# LSA IMPLEMENTATION
-# ---------------------------------------------------------
-def lsa_summary(text, n_sentences=3, k_topics=3):
-    sentences = sent_tokenize(text)
+from pathlib import Path
 
-    # Sentence-term matrix
-    vectorizer = TfidfVectorizer(stop_words="english")
-    A = vectorizer.fit_transform(sentences).toarray()
+DATASET_PATH = Path(__file__).resolve().parent / "dataset_bg_wiki_informatics_100.jsonl"
 
-    # SVD
-    U, S, Vt = svd(A, full_matrices=False)
-
-    # Keep top k topics
-    U_k = U[:, :k_topics]
-    S_k = S[:k_topics]
-
-    # Sentence importance score
-    scores = np.sqrt((U_k * S_k) ** 2).sum(axis=1)
-
-    # Pick top sentences
-    top_idx = np.argsort(scores)[-n_sentences:]
-    top_idx = sorted(top_idx)
-
-    return " ".join(sentences[i] for i in top_idx)
-
-
-# ---------------------------------------------------------
-# MAIN CONSOLE APP
-# ---------------------------------------------------------
 def main():
-    print("\n=== SIMPLE TEXT SUMMARIZER (TextRank / LSA) ===\n")
+    items = load_jsonl(DATASET_PATH)
 
-    text = input("Paste your text here:\n\n")
+    print("\n=== BG WIKI SUMMARIZER (TextRank / LSA) ===")
+    print(f"Loaded articles: {len(items)}")
+
+    query = input("\nSearch in title (optional, press Enter to skip): ").strip()
+    article = pick_article(items, title_contains=query) if query else pick_article(items)
+
+    if not article:
+        print("No matching articles found.")
+        return
+
+    print("\n--- ARTICLE ---")
+    print("Title:", article["title"])
+    print("URL:", article.get("url", ""))
 
     print("\nChoose summarization method:")
     print("1 - TextRank")
     print("2 - LSA")
-    method = input("\nEnter 1 or 2: ")
+    method = input("\nEnter 1 or 2: ").strip()
 
-    n = input("\nHow many sentences should the summary contain? (default = 3): ")
-    n = int(n) if n.strip() else 3
+    n = input("\nHow many sentences should the summary contain? (default = 3): ").strip()
+    n = int(n) if n else 3
 
-    print("\n=== SUMMARY ===\n")
+    text = article["text"]
 
+    print("\n=== GENERATED SUMMARY ===\n")
     if method == "1":
-        print(textrank_summary(text, n))
+        summary = textrank_summary_bg(text, clean_fn=clean_sentence, n_sentences=n)
     elif method == "2":
-        print(lsa_summary(text, n))
+        summary = lsa_summary_bg(text, clean_fn=clean_sentence, n_sentences=n, k_topics=3)
     else:
         print("Invalid choice.")
+        return
 
-    print("\n================\n")
-
+    print(summary)
 
 if __name__ == "__main__":
     main()

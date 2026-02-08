@@ -1,7 +1,7 @@
 import classla
 import string
 
-import networkx as nx
+# import networkx as nx
 import itertools
 from pathlib import Path
 

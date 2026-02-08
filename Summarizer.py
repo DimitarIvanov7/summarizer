@@ -4,38 +4,52 @@ from sklearn.metrics.pairwise import cosine_similarity
 from numpy.linalg import svd
 import stanza
 
-stanza.download("bg")
-nlp_bg = stanza.Pipeline("bg", processors="tokenize", use_gpu=False)
+try:
+    nlp_bg = stanza.Pipeline("bg", processors="tokenize", use_gpu=False)
+except:
+    stanza.download("bg")
+    nlp_bg = stanza.Pipeline("bg", processors="tokenize", use_gpu=False)
 
 def stanza_sent_tokenize(text):
     doc = nlp_bg(text)
     return [sentence.text for sentence in doc.sentences]
 
-def textrank_summary_bg(text, clean_fn, n_sentences=3):
-    sentences = stanza_sent_tokenize(text)  # works ok for BG most of the time
+def textrank_summary_bg(text, clean_fn, n_sentences=3, damping=0.85, max_iter=100, tol=1e-6):
+    sentences = stanza_sent_tokenize(text)
+    N = len(sentences)
 
-    if len(sentences) <= n_sentences:
+    if N <= n_sentences:
         return " ".join(sentences)
 
+    # Clean sentences only for vectorization
     cleaned = [clean_fn(s) for s in sentences]
-    vectorizer = TfidfVectorizer()  # no english stopwords
-    tfidf = vectorizer.fit_transform(cleaned)
 
-    sim_matrix = cosine_similarity(tfidf)
-    np.fill_diagonal(sim_matrix, 0.0)  # optional: ignore self-similarity
+    vectorizer = TfidfVectorizer()
+    X = vectorizer.fit_transform(cleaned)
 
-    n = len(sentences)
-    scores = np.ones(n) / n
-    damping = 0.85
+    # Similarity graph
+    W = cosine_similarity(X)
+    np.fill_diagonal(W, 0.0)
 
-    for _ in range(50):
-        new_scores = (1 - damping) / n + damping * sim_matrix.dot(scores)
-        if np.allclose(new_scores, scores, atol=1e-6):
+    # Row-normalize → transition matrix
+    row_sums = W.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1.0
+    P = W / row_sums
+
+    # PageRank
+    scores = np.ones(N) / N
+    teleport = np.ones(N) / N
+
+    for _ in range(max_iter):
+        new_scores = (1 - damping) * teleport + damping * P.T.dot(scores)
+        if np.linalg.norm(new_scores - scores, 1) < tol:
             break
         scores = new_scores
 
+    # Select top sentences
     top_idx = np.argsort(scores)[-n_sentences:]
-    top_idx = sorted(top_idx)
+    top_idx.sort()
+
     return " ".join(sentences[i] for i in top_idx)
 
 

@@ -3,6 +3,7 @@ import random
 from Summarizer import textrank_summary_bg, lsa_summary_bg
 from TextPreprocessing import clean_sentence
 from pathlib import Path
+from Evaluation import evaluate_summary
 
 def load_jsonl(path):
     items = []
@@ -61,6 +62,18 @@ def main():
         return
 
     print(summary)
+
+    print()
+
+    scores = evaluate_summary(text, summary)
+
+    for s in scores:
+        print("================= ", s, " =================")
+        print("Precision: ", scores[s][0])
+        print("Recall: ", scores[s][1])
+        print("F-measure: ", scores[s][2])
+        print()
+
 
 if __name__ == "__main__":
     main()

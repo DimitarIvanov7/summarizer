@@ -29,7 +29,7 @@ function App() {
         <textarea
           className="w-full border rounded p-2 mb-4"
           rows={8}
-          placeholder="Paste your text here..."
+          placeholder="..."
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
